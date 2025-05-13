@@ -2,3 +2,4 @@
 .env
 .pyodk_config.toml
 __pycache__
+output_files
