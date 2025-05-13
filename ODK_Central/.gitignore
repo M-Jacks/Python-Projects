@@ -3,3 +3,5 @@
 .pyodk_config.toml
 __pycache__
 output_files
+.env
+.env copy

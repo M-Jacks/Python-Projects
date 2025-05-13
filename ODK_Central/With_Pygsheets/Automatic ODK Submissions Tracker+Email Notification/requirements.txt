@@ -1,0 +1,5 @@
+pandas
+pygsheets
+python-dotenv
+schedule
+pyodk
