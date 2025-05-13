@@ -1,2 +1,4 @@
 .git
 .env
+.pyodk_config.toml
+__pycache__
