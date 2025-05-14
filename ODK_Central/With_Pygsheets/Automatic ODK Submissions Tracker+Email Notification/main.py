@@ -68,7 +68,7 @@ def update_google_sheet(df: pd.DataFrame, sheet_name: str, service_file: str) ->
 
 def main() -> str:
     sheet_name = load_environment()
-    service_file = r'D:/Python_Projects/access/client_secret.json'
+    service_file = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE')
     output_file = os.path.join(os.path.dirname(__file__), 'output_files', 'pivoted_photo_summary5.csv')
     allowed_submitters = ['is_cimmyt', 'is_cip_ke', 'is_qed_mw']
 
