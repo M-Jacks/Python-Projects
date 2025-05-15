@@ -84,7 +84,17 @@ def main() -> str:
     save_to_csv(pivot_combined, output_file)
     update_google_sheet(pivot_combined, sheet_name, service_file)
 
-    return f"✅ Summary updated and saved at {output_file}"
+    # Create email
+    summary_lines = ["📸 Image Count Summary:\n"]
+    for col in pivot_combined.columns:
+        if col.endswith('_count'):
+            name = col.replace('_count', '')
+            total = pivot_combined[col].sum()
+            summary_lines.append(f"• {name}: {total} images")
+
+    summary_text = "\n".join(summary_lines)
+    return f"{summary_text}\n\n✅ Summary updated and saved at {output_file}"
+
 
 # if __name__ == "__main__":
 #     main()
