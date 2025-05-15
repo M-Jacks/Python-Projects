@@ -9,10 +9,10 @@ load_dotenv()
 
 receiver_email = os.getenv('RECEIVER_EMAIL')
 def job():
-    print("🔁 Updting Image submissions summary...")
+    print("🔁 Updating Image submissions summary...")
     result = main()
     send_email(
-        subject="✅ ODK Summary Updated",
+        subject="✅ ODK Summary Update",
         body=result,
         to_email=receiver_email
     )
