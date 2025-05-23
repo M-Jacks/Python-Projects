@@ -3,21 +3,39 @@ import pandas as pd
 import pygsheets
 from pyodk.client import Client
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Tuple
+from datetime import datetime
 
 def load_environment():
-    """Load environment variables from .env file."""
     load_dotenv()
     return os.getenv("SHEETNAME")
 
-
 def initialize_odk_client() -> Client:
-    """Initialize and return an ODK client."""
     return Client()
 
+def format_seconds_to_hhmmss(seconds: int) -> str:
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f'{hours}:{minutes:02}:{secs:02}'
 
-def fetch_and_process_data(client: Client, allowed_submitters: List[str]) -> pd.DataFrame:
-    """Fetch data from ODK, filter it, and return a processed pivot DataFrame."""
+def calculate_weekly_average(df: pd.DataFrame) -> pd.DataFrame:
+    df['week_start'] = df['today'].dt.to_period('W-SUN').apply(lambda r: r.start_time)
+    weekly_avg = df.groupby(['week_start', 'submitter'])['photo_count'].mean().reset_index()
+    return weekly_avg.pivot(index='week_start', columns='submitter', values='photo_count').fillna(0).round(2)
+
+def calculate_weekly_total(df: pd.DataFrame) -> pd.DataFrame:
+    df['week_start'] = df['today'].dt.to_period('W-SUN').apply(lambda r: r.start_time)
+    weekly_total = df.groupby(['week_start', 'submitter'])['photo_count'].sum().reset_index()
+    return weekly_total.pivot(index='week_start', columns='submitter', values='photo_count').fillna(0).astype(int)
+
+def calculate_submitter_totals(pivot_df: pd.DataFrame) -> pd.DataFrame:
+    counts = pivot_df[[col for col in pivot_df.columns if col.endswith('_count')]].sum()
+    submitter_totals = counts.to_frame(name='Total')
+    submitter_totals.index = [i.replace('_count', '') for i in submitter_totals.index]
+    return submitter_totals.T
+
+def fetch_and_process_data(client: Client, allowed_submitters: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     data = client.submissions.get_table(form_id='Image Safari Crop Scout (Phone Approach)')
     records = data['value']
     df = pd.json_normalize(records)
@@ -27,6 +45,7 @@ def fetch_and_process_data(client: Client, allowed_submitters: List[str]) -> pd.
 
     df['photo_count'] = df['photos.photoQuantity'].fillna(0).astype(int)
     df['duration'] = df['photos.photoSessionDuration'].fillna(0).astype(int)
+    df['today'] = pd.to_datetime(df['today'])
 
     grouped = df.groupby(['today', 'submitter'])[['photo_count', 'duration']].sum().reset_index()
     pivot_counts = grouped.pivot(index='today', columns='submitter', values='photo_count').fillna(0).astype(int)
@@ -39,32 +58,40 @@ def fetch_and_process_data(client: Client, allowed_submitters: List[str]) -> pd.
     pivot_combined = pd.concat([pivot_counts, pivot_duration], axis=1)
     pivot_combined = pivot_combined.reindex(sorted(pivot_combined.columns), axis=1)
 
-    # Sort by date (index) in descending order
-    return pivot_combined.sort_index(ascending=False)
+    weekly_avg = calculate_weekly_average(grouped)
+    weekly_total = calculate_weekly_total(grouped)
+    submitter_totals = calculate_submitter_totals(pivot_combined)
 
-
-def format_seconds_to_hhmmss(seconds: int) -> str:
-    """Convert seconds to hh:mm:ss format."""
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    secs = seconds % 60
-    return f'{hours}:{minutes:02}:{secs:02}'
-
+    return pivot_combined.sort_index(ascending=False), weekly_avg, weekly_total, submitter_totals
 
 def save_to_csv(df: pd.DataFrame, output_path: str) -> None:
-    """Save the DataFrame to a CSV file."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df.to_csv(output_path)
     print(f"Pivoted photo summary with durations saved to: {output_path}")
 
-
-def update_google_sheet(df: pd.DataFrame, sheet_name: str, service_file: str) -> None:
-    """Update the Google Sheet with the given DataFrame."""
+def update_google_sheet(df: pd.DataFrame, sheet_name: str, service_file: str,
+                        weekly_avg: pd.DataFrame, weekly_total: pd.DataFrame,
+                        totals: pd.DataFrame) -> None:
     gc = pygsheets.authorize(service_file=service_file)
     spreadsheet = gc.open(sheet_name)
     worksheet = spreadsheet.worksheet_by_title('Summary')
-    worksheet.set_dataframe(df.reset_index(), (2, 1))
-    print("Google Sheets updated with the pivoted photo summary.")
+
+    worksheet.clear(start='A1')
+
+    worksheet.update_value('A1', '📅 Daily Photo Summary')
+    worksheet.set_dataframe(df.reset_index(), start='A2')
+
+    worksheet.update_value('L1', '📊 Weekly Averages Table')
+    worksheet.set_dataframe(weekly_avg.reset_index(), start='L2')
+
+    worksheet.update_value('H1', '🧮 Weekly Totals Table')
+    worksheet.set_dataframe(weekly_total.reset_index(), start='H2')
+
+    worksheet.update_value('P1', '🔢 Totals Summary per Center')
+    worksheet.set_dataframe(totals.reset_index(), start='P2')
+
+    print("✅ Google Sheets updated with all pivot tables and summaries.")
+
 
 
 def main() -> str:
@@ -78,17 +105,15 @@ def main() -> str:
 
     print(f"📋 Working on sheet: {sheet_name}")
 
-    # Process data
     client = initialize_odk_client()
-    pivot_combined = fetch_and_process_data(client, allowed_submitters)
+    pivot_combined, weekly_avg, weekly_total, submitter_totals = fetch_and_process_data(client, allowed_submitters)
 
     print(pivot_combined)
-
-    # Save and upload
     save_to_csv(pivot_combined, output_file)
-    update_google_sheet(pivot_combined, sheet_name, service_file)
+    print("Weekly Totals Preview:\n", weekly_total.head())
 
-    # Create email
+    update_google_sheet(pivot_combined, sheet_name, service_file, weekly_avg, weekly_total, submitter_totals)
+
     summary_lines = ["📸 Total Image Count Summary:\n"]
     for col in pivot_combined.columns:
         if col.endswith('_count'):
@@ -96,11 +121,14 @@ def main() -> str:
             total = pivot_combined[col].sum()
             summary_lines.append(f"• {name}: {total} images")
 
+    summary_lines.append("\n📊 Weekly Averages:")
+    for week, row in weekly_avg.iterrows():
+        readable_week = week.strftime('%Y-%m-%d')
+        averages = ', '.join(f"{k}: {v:.1f}" for k, v in row.items())
+        summary_lines.append(f"• Week of {readable_week}: {averages}")
+
     summary_text = "\n".join(summary_lines)
-    return (
-            # f"{summary_text}\n\n✅ Summary updated and saved at {output_file}"
-            f"{summary_text}\n\n✅ Summary updated and saved at:🔗 {sheet_url}"
-            )
+    return f"{summary_text}\n\n✅ Summary updated and saved at:🔗 {sheet_url}"
 
 # if __name__ == "__main__":
 #     main()
