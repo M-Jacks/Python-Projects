@@ -39,7 +39,8 @@ def fetch_and_process_data(client: Client, allowed_submitters: List[str]) -> pd.
     pivot_combined = pd.concat([pivot_counts, pivot_duration], axis=1)
     pivot_combined = pivot_combined.reindex(sorted(pivot_combined.columns), axis=1)
 
-    return pivot_combined
+    # Sort by date (index) in descending order
+    return pivot_combined.sort_index(ascending=False)
 
 
 def format_seconds_to_hhmmss(seconds: int) -> str:
@@ -54,7 +55,7 @@ def save_to_csv(df: pd.DataFrame, output_path: str) -> None:
     """Save the DataFrame to a CSV file."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df.to_csv(output_path)
-    print(f"✅ Pivoted photo summary with durations saved to: {output_path}")
+    print(f"Pivoted photo summary with durations saved to: {output_path}")
 
 
 def update_google_sheet(df: pd.DataFrame, sheet_name: str, service_file: str) -> None:
@@ -63,7 +64,7 @@ def update_google_sheet(df: pd.DataFrame, sheet_name: str, service_file: str) ->
     spreadsheet = gc.open(sheet_name)
     worksheet = spreadsheet.worksheet_by_title('Summary')
     worksheet.set_dataframe(df.reset_index(), (2, 1))
-    print("✅ Google Sheets updated with the pivoted photo summary.")
+    print("Google Sheets updated with the pivoted photo summary.")
 
 
 def main() -> str:
