@@ -70,7 +70,10 @@ def main() -> str:
     sheet_name = load_environment()
     service_file = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE')
     output_file = os.path.join(os.path.dirname(__file__), 'output_files', 'pivoted_photo_summary5.csv')
-    allowed_submitters = ['is_cimmyt', 'is_cip_ke', 'is_qed_mw']
+    sheet_url = os.getenv("SHEET_URL")
+
+    allowed_submitters = os.getenv('ALLOWED_SUBMITTERS_LIST', '')
+    allowed_submitters = [s.strip() for s in allowed_submitters.split(',') if s.strip()]
 
     print(f"📋 Working on sheet: {sheet_name}")
 
@@ -85,7 +88,7 @@ def main() -> str:
     update_google_sheet(pivot_combined, sheet_name, service_file)
 
     # Create email
-    summary_lines = ["📸 Image Count Summary:\n"]
+    summary_lines = ["📸 Total Image Count Summary:\n"]
     for col in pivot_combined.columns:
         if col.endswith('_count'):
             name = col.replace('_count', '')
@@ -93,8 +96,10 @@ def main() -> str:
             summary_lines.append(f"• {name}: {total} images")
 
     summary_text = "\n".join(summary_lines)
-    return f"{summary_text}\n\n✅ Summary updated and saved at {output_file}"
-
+    return (
+            # f"{summary_text}\n\n✅ Summary updated and saved at {output_file}"
+            f"{summary_text}\n\n✅ Summary updated and saved at:🔗 {sheet_url}"
+            )
 
 # if __name__ == "__main__":
 #     main()

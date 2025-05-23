@@ -16,9 +16,11 @@ def send_email(subject: str, body: str, to_email: str):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
         raise ValueError("⚠️ EMAIL_ADDRESS and EMAIL_PASSWORD must be set in the .env file")
 
+    recipients = [email.strip() for email in to_email.split(",")]
+
     msg = MIMEMultipart()
     msg['From'] = SENDER_EMAIL
-    msg['To'] = to_email
+    msg['To'] = ", ".join(recipients)
     msg['Subject'] = subject
 
     msg.attach(MIMEText(body, 'plain'))
@@ -28,6 +30,6 @@ def send_email(subject: str, body: str, to_email: str):
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
-        print(f"📨 Email sent to {to_email}")
+        print(f"📨 Email sent to: {', '.join(recipients)}")
     except Exception as e:
         print(f"❌ Failed to send email: {e}")

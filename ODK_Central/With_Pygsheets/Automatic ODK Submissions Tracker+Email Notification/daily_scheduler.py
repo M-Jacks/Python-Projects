@@ -12,7 +12,7 @@ def job():
     print("🔁 Updating Image submissions summary...")
     result = main()
     send_email(
-        subject="✅ ODK Summary Update",
+        subject="✅Image Safari Photo Count Update",
         body=result,
         to_email=receiver_email
     )
