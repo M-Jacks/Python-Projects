@@ -110,8 +110,6 @@ def main() -> str:
 
     print(pivot_combined)
     save_to_csv(pivot_combined, output_file)
-    print("Weekly Totals Preview:\n", weekly_total.head())
-
     update_google_sheet(pivot_combined, sheet_name, service_file, weekly_avg, weekly_total, submitter_totals)
 
     summary_lines = ["📸 Total Image Count Summary:\n"]
@@ -121,14 +119,18 @@ def main() -> str:
             total = pivot_combined[col].sum()
             summary_lines.append(f"• {name}: {total} images")
 
-    summary_lines.append("\n📊 Weekly Averages:")
-    for week, row in weekly_avg.iterrows():
-        readable_week = week.strftime('%Y-%m-%d')
-        averages = ', '.join(f"{k}: {v:.1f}" for k, v in row.items())
-        summary_lines.append(f"• Week of {readable_week}: {averages}")
+    latest_week_start = weekly_total.index.max()
+    latest_week_dates = pd.date_range(start=latest_week_start, periods=7, freq='D')
+    recent_daily_counts = pivot_combined.loc[pivot_combined.index.isin(latest_week_dates)]
+
+    summary_lines.append("\n📅 This week's Daily Photo Counts:")
+    for date, row in recent_daily_counts.iterrows():
+        day_counts = [f"{col.replace('_count', '')}: {row[col]}" for col in recent_daily_counts.columns if col.endswith('_count')]
+        summary_lines.append(f"• {date.strftime('%Y-%m-%d')}: {', '.join(day_counts)}")
 
     summary_text = "\n".join(summary_lines)
     return f"{summary_text}\n\n✅ Summary updated and saved at:🔗 {sheet_url}"
+
 
 # if __name__ == "__main__":
 #     main()

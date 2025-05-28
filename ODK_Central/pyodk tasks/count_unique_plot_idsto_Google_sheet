@@ -1,0 +1,115 @@
+import pandas as pd
+import os
+from pyodk.client import Client
+import pygsheets
+from dotenv import load_dotenv
+
+load_dotenv()
+GOOGLE_SERVICE_ACCOUNT_FILE= 'D:/Python_Projects/access/client_secret.json'
+GOOGLE_SHEET_NAME = 'Image Safari Summary'
+print(f"Using Google Sheet: {GOOGLE_SHEET_NAME}")
+
+def fetch_records(form_id):
+    """Fetches submission records from the ODK Central server."""
+    client = Client()
+    project_id = client.config.central.default_project_id
+    records = client.submissions.get_table(project_id=project_id, form_id=form_id)['value']
+    return records
+
+def analyze_global_stats(df):
+    """Prints overall statistics about plot submissions."""
+    submitter_names = df['__system.submitterName'].dropna().unique()
+    print(f"Unique submitter names: {len(submitter_names)}")
+    for name in submitter_names:
+        print(name)
+
+    unique_plot_counts = df.groupby('__system.submitterName')['plot_id'].nunique().reset_index()
+    print("\nUnique plot counts by submitter:")
+    print(unique_plot_counts)
+
+    most_repeated_plot = df['plot_id'].mode()[0]
+    most_repeated_count = df['plot_id'].value_counts().max()
+    least_repeated_plot = df['plot_id'].value_counts().idxmin()
+    least_repeated_count = df['plot_id'].value_counts().min()
+    average_repetitions = df['plot_id'].value_counts().mean()
+
+    print(f"\nMost repeated plot ID: {most_repeated_plot} ({most_repeated_count} times)")
+    print(f"Least repeated plot ID: {least_repeated_plot} ({least_repeated_count} times)")
+    print(f"Average number of repetitions of a plot ID: {average_repetitions:.2f}")
+
+    return submitter_names
+
+def update_google_sheet(df, submitter_names):
+    """Updates Google Sheets with pivoted plot counts and side-by-side statistics per submitter."""
+    gc = pygsheets.authorize(service_file=GOOGLE_SERVICE_ACCOUNT_FILE)
+
+    try:
+        sh = gc.open(GOOGLE_SHEET_NAME)
+    except pygsheets.SpreadsheetNotFound:
+        sh = gc.create(GOOGLE_SHEET_NAME)
+
+    for name in submitter_names:
+        submitter_df = df[df['__system.submitterName'] == name]
+        plot_counts = submitter_df['plot_id'].value_counts().reset_index()
+        plot_counts.columns = ['plot_id', 'submission_count']
+
+        # Stats
+        total_submissions = len(submitter_df)
+        unique_plots = plot_counts['plot_id'].nunique()
+        most_plot = plot_counts.loc[plot_counts['submission_count'].idxmax()]
+        least_plot = plot_counts.loc[plot_counts['submission_count'].idxmin()]
+        average_reps = plot_counts['submission_count'].mean()
+
+        stats_df = pd.DataFrame({
+            'Insights from the Data': [
+                'Total Submissions',
+                'Unique Plot IDs/Number of Plots',
+                'Most Frequent Submitted Plot ID',
+                'Highest submission Count/plot',
+                'Least Frequent Submitted Plot ID',
+                'Least submission Count/plot',
+                'Average Submissions per Plot'
+            ],
+            '': [
+                total_submissions,
+                unique_plots,
+                most_plot['plot_id'],
+                most_plot['submission_count'],
+                least_plot['plot_id'],
+                least_plot['submission_count'],
+                round(average_reps, 2)
+            ]
+        })
+
+        # Clean sheet name
+        sheet_title = name[:50].replace('/', '_').replace('\\', '_')
+
+        try:
+            wks = sh.worksheet_by_title(sheet_title)
+            wks.clear()
+        except pygsheets.WorksheetNotFound:
+            wks = sh.add_worksheet(sheet_title)
+
+        # Write side-by-side data
+        wks.set_dataframe(plot_counts, start=(1, 1), copy_index=False)
+        wks.set_dataframe(stats_df, start=(1, 4), copy_index=False)
+
+    print("✅ Google Sheet updated for all submitters.")
+
+def main():
+    form_id = 'Image Safari Crop Scout (Phone Approach)'
+    print("Fetching records...")
+    records = fetch_records(form_id)
+
+    print("Normalizing records into a DataFrame...")
+    df = pd.json_normalize(records)
+
+    print("Analyzing global statistics...")
+    submitter_names = analyze_global_stats(df)
+
+    print("Updating Google Sheets...")
+    update_google_sheet(df, submitter_names)
+    print("Done.")
+
+if __name__ == "__main__":
+    main()
