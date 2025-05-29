@@ -94,6 +94,23 @@ def update_google_sheet(df, submitter_names):
         wks.set_dataframe(plot_counts, start=(1, 1), copy_index=False)
         wks.set_dataframe(stats_df, start=(1, 4), copy_index=False)
 
+    from datetime import datetime
+
+    try:
+        history_sheet = sh.worksheet_by_title("Update History")
+    except pygsheets.WorksheetNotFound:
+        history_sheet = sh.add_worksheet("Update History")
+
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # print the page header in the first row
+    history_sheet.update_value('A1', 'Update History (Latest to Earliest)')
+    history_sheet.insert_rows(
+        row=1,
+        number=1,
+        values=[f" {current_time}"]
+    
+    )
+
     print("✅ Google Sheet updated for all submitters.")
 
 def main():
